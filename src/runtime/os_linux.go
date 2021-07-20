@@ -188,6 +188,7 @@ const (
 )
 
 var procAuxv = []byte("/proc/self/auxv\x00")
+var procArgv = []byte("/proc/self/cmdline\x00")
 
 var addrspace_vec [1]byte
 
@@ -256,6 +257,56 @@ func sysargs(argc int32, argv **byte) {
 	// the whole file.
 	buf[len(buf)-2] = _AT_NULL
 	sysauxv(buf[:])
+
+	if islibrary || isarchive {
+		if !sysLibArgsValid {
+			fd := open(&procArgv[0], 0 /* O_RDONLY */, 0)
+
+			if fd < 0 {
+				return
+			}
+
+			argLen := 0
+
+			var n int32
+			var i int32
+
+			var size uintptr = 0
+
+			for {
+				var buf [128]uintptr
+				n = read(fd, noescape(unsafe.Pointer(&buf[0])), int32(unsafe.Sizeof(buf)))
+				if n <= 0 {
+					break
+				}
+
+				size++
+
+				for i = 0; i < n; i++ {
+					if buf[i] == 0 {
+						if argLen > 0 {
+							argc++
+							argLen = 0
+						}
+						continue
+					}
+
+					argLen++
+
+				}
+			}
+
+			p, err := mmap(nil, size, _PROT_READ, _MAP_ANON|_MAP_PRIVATE, fd, 0)
+			if err != 0 {
+				return
+			}
+
+			argv = (**byte)(p)
+			sysLibArgsValid = true
+
+			// closefd(fd)
+		}
+	}
 }
 
 // startupRandomData holds random bytes initialized at startup. These come from
