@@ -55,11 +55,11 @@ var (
 // nosplit for use in linux startup sysargs
 //go:nosplit
 func argv_index(argv **byte, i int32) *byte {
-	if islibrary || isarchive {
-		if !sysLibArgsValid {
-			return nil
-		}
-	}
+	// if islibrary || isarchive {
+	// 	if nil != sysLibArgsValid { //TODO wrong
+	// 		return nil
+	// 	}
+	// }
 
 	return *(**byte)(add(unsafe.Pointer(argv), uintptr(i)*sys.PtrSize))
 }
@@ -74,11 +74,11 @@ func goargs() {
 	if GOOS == "windows" {
 		return
 	}
-	if islibrary || isarchive {
-		if !sysLibArgsValid {
-			return
-		}
-	}
+	// if islibrary || isarchive {
+	// 	if nil != sysLibArgsValid { //TODO wrong
+	// 		return
+	// 	}
+	// }
 
 	argslice = make([]string, argc)
 	for i := int32(0); i < argc; i++ {

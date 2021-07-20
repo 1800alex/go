@@ -14,6 +14,7 @@
 #include <time.h>
 #include "libcgo.h"
 #include "libcgo_unix.h"
+#include <unistd.h>
 
 static pthread_cond_t runtime_init_cond = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t runtime_init_mu = PTHREAD_MUTEX_INITIALIZER;
@@ -23,16 +24,109 @@ static int runtime_init_done;
 static void (*cgo_context_function)(struct context_arg*);
 
 // Detect if using glibc
-int
+void *
 x_cgo_sys_lib_args_valid()
 {
 	// The ELF gABI doesn't require an argc / argv to be passed to the functions
 	// in the DT_INIT_ARRAY. However, glibc always does.
 	// Ignore uClibc masquerading as glibc.
 #if defined(__GLIBC__) && !defined(__UCLIBC__)
-	return 1;
-#else
 	return 0;
+#else
+	FILE *file = NULL;
+	size_t read_bytes = -1;
+	size_t size = 0;
+	int block_read_bytes = 0;
+	char block[128];
+	int i;
+
+	char *buffer = NULL;
+	int *argc = NULL;
+
+	file = fopen("/proc/self/cmdline", "r");
+	if(NULL == file) {
+		return 0;
+	}
+
+	printf("reading file\n");
+	fflush(stdout);
+
+	do {
+		block_read_bytes = fread(&block, 1, (size_t)128, file);
+
+		printf("read %d\n",block_read_bytes);
+		fflush(stdout);
+		usleep(100000);
+
+		if(block_read_bytes == 0) {
+			if(buffer == NULL) {
+				/* Just return an empty string */
+				size = 5;
+				buffer = (char *)malloc(size);
+
+				if(NULL == buffer) {
+					return 0;
+				}
+
+				argc = (int *)buffer;
+				*argc = 0;
+				buffer[4] = 0;	/* NULL terminate */
+
+				//buffer[0][0] = 0; /* NULL terminate */
+			}
+		}
+		else if(block_read_bytes > 0) {
+			printf("LINE: %d\n",__LINE__);fflush(stdout);usleep(100000);
+			if(buffer == NULL) {
+				size = block_read_bytes + 4;
+
+				printf("LINE: %d\n",__LINE__);fflush(stdout);usleep(100000);
+				buffer = (char *)malloc(size);
+
+				if(NULL == buffer) {
+					printf("LINE: %d\n",__LINE__);fflush(stdout);usleep(100000);
+					return 0;
+				}
+
+				printf("LINE: %d\n",__LINE__);fflush(stdout);usleep(100000);
+				argc = (int *)buffer;
+				*argc = 0;
+
+				printf("LINE: %d\n",__LINE__);fflush(stdout);usleep(100000);
+
+				memcpy(buffer + 4, block, block_read_bytes);
+			}
+			else {
+				printf("LINE: %d\n",__LINE__);fflush(stdout);usleep(100000);
+				size = size + block_read_bytes;
+				buffer = (char *)realloc(buffer, size);
+
+				if(NULL == buffer) {
+					return 0;
+				}
+
+				memcpy(buffer + 4 + read_bytes, block, block_read_bytes);
+			}
+
+			//buffer[0][size - 1] = 0; /* NULL terminate */
+
+			read_bytes += block_read_bytes;
+
+			for(i = 0; i < block_read_bytes; i++) {
+				if (block[i] == 0) {
+					printf("found argument null at %d\n",i);
+					fflush(stdout);
+					usleep(100000);
+					*argc = *argc + 1;
+				}
+			}
+		}
+	} while(block_read_bytes > 0);
+
+	printf("argc: %d\n", *argc);fflush(stdout);
+	usleep(100000);
+
+	return buffer;
 #endif
 }
 

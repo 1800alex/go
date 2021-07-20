@@ -229,11 +229,21 @@ ok:
 
 	CALL	runtime·check(SB)
 
+#ifdef GOOS_linux
+	// call our function to read cmdline which allocates it on the heap
+	// pass that address to runtime.args?
+	CALL	x_cgo_sys_lib_args_valid(SB)
+	MOVL	0(EAX), AX
+	MOVL	AX, 0(SP)
+	MOVL	4(EAX), AX
+	MOVL	AX, 4(SP)
+#else
 	// saved argc, argv
 	MOVL	120(SP), AX
 	MOVL	AX, 0(SP)
 	MOVL	124(SP), AX
 	MOVL	AX, 4(SP)
+#endif
 	CALL	runtime·args(SB)
 	CALL	runtime·osinit(SB)
 	CALL	runtime·schedinit(SB)
