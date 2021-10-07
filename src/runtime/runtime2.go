@@ -1146,10 +1146,5 @@ var (
 	isarchive bool // -buildmode=c-archive
 )
 
-// when using -buildmode=c-archive or -buildmode=c-shared on linux
-// we have to first make sure that glibc is being used or else
-// we cannot rely on argc/argv/auxv to be accurate
-var sysLibArgsValid bool = true
-
 // Must agree with internal/buildcfg.Experiment.FramePointer.
 const framepointer_enabled = GOARCH == "amd64" || GOARCH == "arm64"
