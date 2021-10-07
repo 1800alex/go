@@ -217,6 +217,19 @@ func sysargs(argc int32, argv **byte) {
 		if sysauxv(auxv[:]) != 0 {
 			return
 		}
+	} else {
+		args := unsafe.Pointer(persistentalloc(sys.PtrSize*4, 0, &memstats.other_sys))
+		// argv pointer
+		*(**byte)(args) = (*byte)(add(args, sys.PtrSize*1))
+		// argv data
+		*(**byte)(add(args, sys.PtrSize*1)) = (*byte)(nil) // end argv
+		*(**byte)(add(args, sys.PtrSize*2)) = (*byte)(nil) // end envp
+		*(**byte)(add(args, sys.PtrSize*3)) = (*byte)(nil) // end auxv
+		argc = 0
+		argv = (**byte)(args)
+
+		// argc = 0
+		// argv = &[...]*byte{nil, nil, nil}
 	}
 
 	// In some situations we don't get a loader-provided
