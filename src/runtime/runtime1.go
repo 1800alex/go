@@ -56,6 +56,7 @@ var (
 //go:nosplit
 func argv_index(argv **byte, i int32) *byte {
 	return *(**byte)(add(unsafe.Pointer(argv), uintptr(i)*goarch.PtrSize))
+}
 
 // when using -buildmode=c-archive or -buildmode=c-shared on linux
 // we have to first make sure that glibc is being used or else
