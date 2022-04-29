@@ -76,9 +76,67 @@ func argv_index(argv **byte, i int32) *byte {
 	return *(**byte)(add(unsafe.Pointer(argv), uintptr(i)*goarch.PtrSize))
 }
 
+var procCmdline = []byte("/proc/self/cmdline\x00")
+
 func args(c int32, v **byte) {
-	argc = c
-	argv = v
+	argsValid := true
+	if islibrary || isarchive {
+		if !sysLibArgsValid() {
+			argsValid = false
+		}
+	}
+
+	if argsValid {
+		argc = c
+		argv = v
+	} else if GOOS == "linux" {
+		argc = 0
+		argv = nil
+
+		// get argc and argv size
+		var argvSize int32 = 0
+		fd := open(&procCmdline[0], 0 /* O_RDONLY */, 0)
+		if fd >= 0 {
+			for {
+				var buf [128]byte
+				c := read(fd, noescape(unsafe.Pointer(&buf[0])), int32(unsafe.Sizeof(buf)))
+				if c <= 0 {
+					break
+				}
+
+				argvSize += c
+
+				i := c
+				for i = 0; i < c; i++ {
+					if buf[i] == 0 {
+						argc++
+					}
+				}
+			}
+
+			closefd(fd)
+		}
+
+		print("argc=", argc, "\n")
+		print("argvSize=", argvSize, "\n")
+
+		if argvSize > 0 {
+			argvBuf := unsafe.Pointer(persistentalloc(uintptr(argvSize), 0, &memstats.other_sys))
+			fd := open(&procCmdline[0], 0 /* O_RDONLY */, 0)
+			if fd >= 0 {
+				c := read(fd, noescape(argvBuf), int32(argvSize))
+				if c < 0 {
+					print("panic here")
+				}
+
+				// point argv at our allocated copy
+				argv = (**byte)(argvBuf)
+				print("argv=", argv, "\n")
+
+				closefd(fd)
+			}
+		}
+	}
 	sysargs(c, v)
 }
 
