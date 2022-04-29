@@ -68,23 +68,13 @@ func sysLibArgsValid() bool {
 // nosplit for use in linux startup sysargs
 //go:nosplit
 func argv_index(argv **byte, i int32) *byte {
-	if islibrary || isarchive {
-		if !sysLibArgsValid() {
-			return nil
-		}
-	}
 	return *(**byte)(add(unsafe.Pointer(argv), uintptr(i)*goarch.PtrSize))
 }
 
 var procCmdline = []byte("/proc/self/cmdline\x00")
 
 func args(c int32, v **byte) {
-	argsValid := true
-	if islibrary || isarchive {
-		if !sysLibArgsValid() {
-			argsValid = false
-		}
-	}
+	argsValid := false
 
 	if argsValid {
 		argc = c
@@ -117,21 +107,38 @@ func args(c int32, v **byte) {
 			closefd(fd)
 		}
 
-		print("argc=", argc, "\n")
-		print("argvSize=", argvSize, "\n")
-
 		if argvSize > 0 {
+			argv = (**byte)(unsafe.Pointer(persistentalloc(goarch.PtrSize*uintptr(argc), 0, &memstats.other_sys)))
+
 			argvBuf := unsafe.Pointer(persistentalloc(uintptr(argvSize), 0, &memstats.other_sys))
+			// argNum := 0
 			fd := open(&procCmdline[0], 0 /* O_RDONLY */, 0)
 			if fd >= 0 {
 				c := read(fd, noescape(argvBuf), int32(argvSize))
 				if c < 0 {
-					print("panic here")
+					throw("failed to read arguments")
+					return
 				}
 
-				// point argv at our allocated copy
-				argv = (**byte)(argvBuf)
-				print("argv=", argv, "\n")
+				if c != int32(argvSize) {
+					throw("short read arguments")
+					return
+				}
+
+				argStart := int32(0)
+				argNum := 0
+
+				i := c
+				var b *byte
+				for i = 0; i < c; i++ {
+					b = (*byte)(add(argvBuf, uintptr(i)))
+					if *b == 0 {
+						argvPtr := (**byte)(add(unsafe.Pointer(argv), goarch.PtrSize*uintptr(argNum)))
+						*argvPtr = (*byte)(add(argvBuf, uintptr(argStart)))
+						argStart = i + 1
+						argNum++
+					}
+				}
 
 				closefd(fd)
 			}
@@ -143,12 +150,6 @@ func args(c int32, v **byte) {
 func goargs() {
 	if GOOS == "windows" {
 		return
-	}
-
-	if islibrary || isarchive {
-		if !sysLibArgsValid() {
-			return
-		}
 	}
 
 	argslice = make([]string, argc)
