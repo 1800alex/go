@@ -65,18 +65,11 @@ func sysLibArgsValid() bool {
 	return true
 }
 
-// nosplit for use in linux startup sysargs
-//go:nosplit
-func argv_index(argv **byte, i int32) *byte {
-	return *(**byte)(add(unsafe.Pointer(argv), uintptr(i)*goarch.PtrSize))
-}
-
 var procCmdline = []byte("/proc/self/cmdline\x00")
+var procEnviron = []byte("/proc/self/environ\x00")
 
 func args(c int32, v **byte) {
-	argsValid := false
-
-	if argsValid {
+	if sysLibArgsValid() {
 		argc = c
 		argv = v
 	} else if GOOS == "linux" {
@@ -107,11 +100,36 @@ func args(c int32, v **byte) {
 			closefd(fd)
 		}
 
-		if argvSize > 0 {
-			argv = (**byte)(unsafe.Pointer(persistentalloc(goarch.PtrSize*uintptr(argc), 0, &memstats.other_sys)))
+		var environSize int32 = 0
+		var envc int32 = 0
+		fd = open(&procEnviron[0], 0 /* O_RDONLY */, 0)
+		if fd >= 0 {
+			for {
+				var buf [128]byte
+				c := read(fd, noescape(unsafe.Pointer(&buf[0])), int32(unsafe.Sizeof(buf)))
+				if c <= 0 {
+					break
+				}
 
+				environSize += c
+
+				i := c
+				for i = 0; i < c; i++ {
+					if buf[i] == 0 {
+						envc++
+					}
+				}
+			}
+
+			closefd(fd)
+		}
+
+		argv = (**byte)(unsafe.Pointer(persistentalloc(goarch.PtrSize*(uintptr(argc)+uintptr(envc)+1), 0, &memstats.other_sys)))
+		argvPtr := (**byte)(add(unsafe.Pointer(argv), goarch.PtrSize*(uintptr(argc)+uintptr(envc)+1)))
+		*argvPtr = (*byte)(nil) //null terminate array
+
+		if argvSize > 0 {
 			argvBuf := unsafe.Pointer(persistentalloc(uintptr(argvSize), 0, &memstats.other_sys))
-			// argNum := 0
 			fd := open(&procCmdline[0], 0 /* O_RDONLY */, 0)
 			if fd >= 0 {
 				c := read(fd, noescape(argvBuf), int32(argvSize))
@@ -125,18 +143,52 @@ func args(c int32, v **byte) {
 					return
 				}
 
-				argStart := int32(0)
-				argNum := 0
+				strStart := int32(0)
+				strNum := 0
 
 				i := c
 				var b *byte
 				for i = 0; i < c; i++ {
 					b = (*byte)(add(argvBuf, uintptr(i)))
 					if *b == 0 {
-						argvPtr := (**byte)(add(unsafe.Pointer(argv), goarch.PtrSize*uintptr(argNum)))
-						*argvPtr = (*byte)(add(argvBuf, uintptr(argStart)))
-						argStart = i + 1
-						argNum++
+						argvPtr := (**byte)(add(unsafe.Pointer(argv), goarch.PtrSize*uintptr(strNum)))
+						*argvPtr = (*byte)(add(argvBuf, uintptr(strStart)))
+						strStart = i + 1
+						strNum++
+					}
+				}
+
+				closefd(fd)
+			}
+		}
+
+		if environSize > 0 {
+			environBuf := unsafe.Pointer(persistentalloc(uintptr(environSize), 0, &memstats.other_sys))
+			fd := open(&procEnviron[0], 0 /* O_RDONLY */, 0)
+			if fd >= 0 {
+				c := read(fd, noescape(environBuf), int32(environSize))
+				if c < 0 {
+					throw("failed to read environment")
+					return
+				}
+
+				if c != int32(environSize) {
+					throw("short read environment")
+					return
+				}
+
+				strStart := int32(0)
+				strNum := 0
+
+				i := c
+				var b *byte
+				for i = 0; i < c; i++ {
+					b = (*byte)(add(environBuf, uintptr(i)))
+					if *b == 0 {
+						argvPtr := (**byte)(add(unsafe.Pointer(argv), goarch.PtrSize*(uintptr(argc)+uintptr(strNum))))
+						*argvPtr = (*byte)(add(environBuf, uintptr(strStart)))
+						strStart = i + 1
+						strNum++
 					}
 				}
 
@@ -159,13 +211,6 @@ func goargs() {
 }
 
 func goenvs_unix() {
-	if islibrary || isarchive {
-		if !sysLibArgsValid() {
-			envs = make([]string, 0)
-			return
-		}
-	}
-
 	// TODO(austin): ppc64 in dynamic linking mode doesn't
 	// guarantee env[] will immediately follow argv. Might cause
 	// problems.
