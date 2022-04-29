@@ -268,7 +268,7 @@ func sysargs(argc int32, argv **byte) {
 		return
 	}
 	var buf [128]uintptr
-	n = read(fd, noescape(unsafe.Pointer(&buf[0])), int32(unsafe.Sizeof(buf)))
+	n := read(fd, noescape(unsafe.Pointer(&buf[0])), int32(unsafe.Sizeof(buf)))
 	closefd(fd)
 	if n < 0 {
 		return
