@@ -240,7 +240,6 @@ func sysargs(argc int32, argv **byte) {
 			return
 		}
 	}
-
 	// In some situations we don't get a loader-provided
 	// auxv, such as when loaded as a library on Android.
 	// Fall back to /proc/self/auxv.
