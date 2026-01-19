@@ -35,6 +35,19 @@ void (*x_crosscall2_ptr)(void (*fn)(void *), void *, int, size_t);
 // The context function, used when tracing back C calls into Go.
 static void (*cgo_context_function)(struct context_arg*);
 
+// Detect if using glibc in order to make c-shared and c-archive builds work with dynamic linkers which
+// do not pass argc / argv to the library init functions such as musl and uClibc.
+int
+x_cgo_sys_lib_args_valid()
+{
+	// On Linux systems, uClibc does not pass argc/argv to libraries.
+#if !defined(__linux__) || (defined(__GLIBC__) && !defined(__UCLIBC__))
+	return 1;
+#else
+	return 0;
+#endif
+}
+
 void
 x_cgo_sys_thread_create(void* (*func)(void*), void* arg) {
 	pthread_attr_t attr;
