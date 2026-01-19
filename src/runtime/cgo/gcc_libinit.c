@@ -40,18 +40,11 @@ static void (*cgo_context_function)(struct context_arg*);
 int
 x_cgo_sys_lib_args_valid()
 {
-	// The ELF gABI doesn't require an argc / argv to be passed to the functions
-	// in the DT_INIT_ARRAY. However, glibc always does.
-	// See http://www.sco.com/developers/gabi/latest/ch5.dynamic.html#init_fini
-	// Ignore uClibc masquerading as glibc.
-#if __linux__
-#if defined(__GLIBC__) && !defined(__UCLIBC__)
+	// On Linux systems, uClibc does not pass argc/argv to libraries.
+#if !defined(__linux__) || (defined(__GLIBC__) && !defined(__UCLIBC__))
 	return 1;
 #else
 	return 0;
-#endif
-#else
-	return 1;
 #endif
 }
 
